@@ -1,0 +1,357 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="color-scheme" content="light" />
+  <title>Management Plan Data – Grouped Bar (Light + Scrollbar)</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #ffffff;
+      --fg: #0b1020;
+      --muted: #0075bf;
+      --accent: #0075bf;   /* used for "covered" */
+      --phase1: #00ab97;   /* 1st data call */
+      --phase2: #4eb051;   /* validation */
+      --phase4: #14aae2;   /* collected (kept as requested) */
+      --harvested: #83d0f5;/* NEW: harvested (distinct blue) */
+      --pending: #cfe9f7;  /* unused visually now */
+      --axis: #0075bf;
+      --border: #d5d8e1;
+      --panel: #ffffff;
+      --panel-muted: #f6f7fb;
+      --grid: #e6edf5;
+    }
+
+    body {
+      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial;
+      background: var(--bg);
+      color: var(--fg);
+      margin: 0;
+      display: grid;
+      gap: 24px;
+      padding: 24px;
+      overflow-x: visible;
+    }
+
+    .card {
+      position: relative;
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      box-shadow: 0 4px 10px rgba(0,0,0,.08);
+      padding: 16px;
+      display: grid;
+      grid-template-rows: auto auto 1fr auto;
+      gap: 8px;
+    }
+
+    .toolbar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin: 2px 0 8px; }
+    .toolbar select, .toolbar button {
+      font: inherit; font-size: 13px;
+      background: var(--panel); color: var(--fg);
+      border: 1px solid var(--border); border-radius: 10px; padding: 6px 10px; cursor: pointer;
+    }
+
+    .legend { display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: center; margin: 6px 0 4px; font-size: 13px; color: var(--fg); }
+    .legend-item { display: inline-flex; align-items: center; gap: 8px; }
+    .swatch { width: 14px; height: 14px; border-radius: 4px; box-shadow: inset 0 0 0 1px rgba(0,0,0,.08); }
+
+    .totals-box {
+      position: absolute; top: 16px; right: 16px;
+      background: var(--panel-muted); border: 1px solid var(--border); border-radius: 12px;
+      padding: 12px 16px; font-size: 13px; color: var(--fg);
+      box-shadow: 0 2px 6px rgba(0,0,0,.06); max-width: 320px;
+    }
+    .totals-box h4 { margin: 0 0 6px; font-size: 14px; color: var(--axis); }
+    .totals-item {
+      margin: 4px 0;
+      display: grid;
+      grid-template-columns: 1fr auto;
+      align-items: center;
+      column-gap: 28px;
+    }
+    .totals-item span:first-child { font-weight: 500; }
+
+    .scroll-wrap { width: 100%; overflow-x: auto; overflow-y: hidden; -webkit-overflow-scrolling: touch; scrollbar-gutter: stable; position: relative; border-radius: 12px; }
+    .scroll-inner { height: 100%; }
+
+    svg { display: block; height: 420px; }
+
+    .hscroll { width: 100%; height: 16px; overflow-x: scroll; overflow-y: hidden; background: #f2f5f9; border-radius: 999px; scrollbar-gutter: stable; }
+    .hscroll-inner { height: 1px; }
+
+    .hscroll::-webkit-scrollbar { height: 14px; }
+    .hscroll::-webkit-scrollbar-track { background: transparent; }
+    .hscroll::-webkit-scrollbar-thumb { background: #b8c2d0; border-radius: 999px; }
+    .hscroll::-webkit-scrollbar-thumb:active { background: #9aa8ba; }
+    .hscroll { scrollbar-width: thin; scrollbar-color: #b8c2d0 transparent; }
+
+    .axis path, .axis line { stroke: var(--axis); }
+    .axis text { fill: var(--muted); font-size: 12px; }
+
+    .tooltip {
+      position: absolute; pointer-events: none; background: var(--panel); color: var(--fg);
+      border: 1px solid var(--border); border-radius: 10px; padding: 8px 10px; font-size: 12px;
+      box-shadow: 0 6px 18px rgba(0,0,0,.12); white-space: normal; max-width: 320px; display: none;
+    }
+
+    .bar { transition: opacity .15s ease, transform .05s linear; outline: none; }
+    .bar:hover, .bar:focus-visible { opacity: .9; }
+
+    @media (max-width: 700px) {
+      body { padding: 16px; }
+      .totals-box { position: static; margin-top: 6px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="toolbar">
+      <label for="sortBy" style="font-size:12px;color:var(--muted)">Sort by:</label>
+      <select id="sortBy" aria-label="Sort countries">
+        <option value="country">Country (A–Z)</option>
+        <option value="call1">Total MPAs (1st data call)</option>
+        <option value="call2">Total MPAs (validation)</option>
+        <option value="collected">Management Plans collected</option>
+        <option value="harvested">Management Plans harvested</option>
+        <option value="covered">MPAs covered by plans</option>
+      </select>
+      <button id="resetBtn" type="button" title="Reset sorting">Reset</button>
+    </div>
+
+    <div class="legend" id="legend"></div>
+    <div class="totals-box" id="totalsBox"></div>
+
+    <div class="scroll-wrap" id="scrollWrap">
+      <div class="scroll-inner" id="scrollInner">
+        <svg id="barChart" aria-label="Grouped bar chart of MPAs and plans by country" role="img"></svg>
+      </div>
+    </div>
+
+    <div class="hscroll" id="hscroll"><div class="hscroll-inner" id="hscrollInner"></div></div>
+  </div>
+
+  <div class="tooltip" id="tooltip"></div>
+
+  <script src="https://cdn.jsdelivr.net/npm/d3@7"></script>
+  <script>
+  // Data unchanged
+  const baseData = [
+    { country: "Denmark",    call1: 86,  call2: 173, collected: 146, harvested: 135, covered: 163,
+      note: "MSFD areas (general/strict) covered by 2 documents available. Ramsar sites (10) without specific plans." },
+    { country: "Estonia",    call1: 67,  call2: 66,  collected: 43,  harvested: 43,  covered: 66,
+      note: "One MPA requested to be removed. Several multi-management plans." },
+    { country: "Finland",    call1: 787, call2: 1805, collected: 215, harvested: 54,  covered: 767,
+      note: "MPA number now also includes Åland sites (updated Sep. 2025). Several multi-management plans (one plan covering many areas), some in preparation or not applicable or no legal obligation. Of the 767 MPAs covered, certain private areas are considered under Natura 2000 plans. Review of 127 designation documents containing conservation features." },
+    { country: "Germany",    call1: 28,  call2: 105, collected: 22,  harvested: 61,  covered: 82,
+      note: "Jurisdiction-specific results. Subareas each with a management plan, but not all available or in preparation." },
+    { country: "Lithuania",  call1: 12,  call2: 8,   collected: 5,   harvested: 5,   covered: 5,
+      note: "Verification of MPA category by Lithuania." },
+    { country: "Poland",     call1: 47,  call2: 47,  collected: 39,  harvested: 22,  covered: 22,
+      note: "Conservation plans and protective tasks considered as Management Plans." },
+    { country: "Sweden",     call1: 436, call2: 436, collected: 421, harvested: 416, covered: 416,
+      note: "New data from Birds area, UNESCO, RAMSAR (ongoing review) so number of declared MPAs will increase as will number of Management Plans that are pending collation. New areas not nationally considered as MPAs, but as areas of protection." }
+  ];
+
+  // FIVE simple bars now (harvested is its own column)
+  const series = [
+    { key: 'call1',     label: 'Total MPAs (1st data call)',              color: 'var(--phase1)' },
+    { key: 'call2',     label: 'Total MPAs (validation)',       color: 'var(--phase2)' },
+    { key: 'collected', label: 'Management Plans (collected)',  color: 'var(--phase4)' },
+    { key: 'harvested', label: 'Management Plans harvested',    color: 'var(--harvested)' },
+    { key: 'covered',   label: 'MPAs covered by plans',         color: 'var(--accent)' }
+  ];
+
+  // Legend
+  const legend = document.getElementById('legend');
+  [
+    {text: 'Total MPAs<br/> (1st data call)', color: 'var(--phase1)'},
+    {text: 'Total MPAs<br/> (validation)', color: 'var(--phase2)'},
+    {text: 'Management Plans<br/> (collected)', color: 'var(--phase4)'},
+    {text: 'Management Plans<br/> harvested', color: 'var(--harvested)'},
+    {text: 'MPAs covered<br/> by plans', color: 'var(--accent)'}
+  ].forEach(item => {
+    const el = document.createElement('div');
+    el.className = 'legend-item';
+    el.innerHTML = `<span class="swatch" style="background:${item.color}"></span><span>${item.text}</span>`;
+    legend.appendChild(el);
+  });
+
+  // Totals box (unchanged)
+  const totals = {
+    call1: d3.sum(baseData, d => d.call1),
+    call2: d3.sum(baseData, d => d.call2),
+    collected: d3.sum(baseData, d => d.collected),
+    harvested: d3.sum(baseData, d => d.harvested),
+    covered: d3.sum(baseData, d => d.covered),
+  };
+  const totalsBox = document.getElementById('totalsBox');
+  totalsBox.innerHTML = `<h4>Totals</h4>
+    <div class="totals-item"><span>Total MPAs (1st data call)</span><span>${totals.call1.toLocaleString()}</span></div>
+    <div class="totals-item"><span>Total MPAs (validation)</span><span>${totals.call2.toLocaleString()}</span></div>
+    <div class="totals-item"><span>Plans collected</span><span>${totals.collected.toLocaleString()}</span></div>
+    <div class="totals-item"><span>Plans harvested</span><span>${totals.harvested.toLocaleString()}</span></div>
+    <div class="totals-item"><span>MPAs covered by plans</span><span>${totals.covered.toLocaleString()}</span></div>`;
+
+  const svg = d3.select('#barChart');
+  const g = svg.append('g');
+  const xAxisG = svg.append('g').attr('class','axis');
+  const yAxisG = svg.append('g').attr('class','axis');
+
+  const scrollWrap = document.getElementById('scrollWrap');
+  const scrollInner = document.getElementById('scrollInner');
+  const hscroll = document.getElementById('hscroll');
+  const hscrollInner = document.getElementById('hscrollInner');
+  const tooltip = document.getElementById('tooltip');
+
+  let margin = {top: 16, right: 24, bottom: 64, left: 64};
+  let width = 1000, height = 420;
+
+  function computeContentWidth() {
+    const countries = baseData.length;
+    const perCountry = 170; // a bit wider for 5 columns
+    const minContent = countries * perCountry + margin.left + margin.right;
+    return Math.max(scrollWrap.clientWidth, minContent);
+  }
+
+  function render(data) {
+    width = computeContentWidth();
+    height = 420;
+
+    scrollInner.style.width = width + 'px';
+    svg.attr('width', width).attr('height', height).attr('viewBox', `0 0 ${width} ${height}`);
+    hscrollInner.style.width = width + 'px';
+
+    const x0 = d3.scaleBand().domain(data.map(d => d.country))
+      .range([margin.left, width - margin.right]).paddingInner(0.2);
+    const x1 = d3.scaleBand().domain(series.map(s => s.key))
+      .range([0, x0.bandwidth()]).padding(0.12);
+
+    const yMax = d3.max(data, d => Math.max(
+      d.call1, d.call2, d.collected, d.harvested, d.covered
+    ));
+    const y  = d3.scaleLinear()
+      .domain([0, yMax]).nice()
+      .range([height - margin.bottom, margin.top]);
+
+    xAxisG
+      .attr('transform', `translate(0,${height - margin.bottom})`)
+      .call(d3.axisBottom(x0))
+      .selectAll('text')
+        .attr('transform','rotate(-30)')
+        .style('text-anchor','end');
+
+    yAxisG
+      .attr('transform', `translate(${margin.left},0)`)
+      .call(d3.axisLeft(y).ticks(6, 'd'));
+
+    const groups = g.selectAll('.country').data(data, d => d.country);
+    groups.join(
+      enter => enter.append('g').attr('class','country')
+        .attr('transform', d => `translate(${x0(d.country)},0)`),
+      update => update.attr('transform', d => `translate(${x0(d.country)},0)`),
+      exit => exit.remove()
+    );
+
+    // Five simple bars
+    const rects = g.selectAll('.country').selectAll('rect.simple')
+      .data(d => series.map(s => ({
+        key: s.key,
+        value: d[s.key],
+        label: s.label,
+        color: s.color,
+        country: d.country,
+        note: d.note
+      })), d => d.key);
+
+    rects.join(
+      enter => enter.append('rect')
+        .attr('class','bar simple')
+        .attr('tabindex', 0)
+        .attr('x', d => x1(d.key))
+        .attr('y', y(0))
+        .attr('width', x1.bandwidth())
+        .attr('height', 0)
+        .attr('fill', d => d.color)
+        .transition().duration(500)
+          .attr('y', d => y(d.value))
+          .attr('height', d => y(0) - y(d.value)),
+      update => update.transition().duration(300)
+        .attr('x', d => x1(d.key))
+        .attr('y', d => y(d.value))
+        .attr('height', d => y(0) - y(d.value)),
+      exit => exit.transition().duration(200).attr('height',0).remove()
+    );
+
+    // Tooltips
+    function showTip(event, d){
+      tooltip.style.display = 'block';
+      tooltip.innerHTML =
+        `<strong>${d.country}</strong><br>${d.label}<br>
+         <span style="font-size:14px">${d.value.toLocaleString()}</span>
+         ${d.note ? `<br><em>${d.note}</em>`:''}`;
+    }
+    function moveTip(event){
+      tooltip.style.left = (event.pageX + 12) + 'px';
+      tooltip.style.top  = (event.pageY - 12) + 'px';
+    }
+    function hideTip(){ tooltip.style.display = 'none'; }
+
+    d3.selectAll('.bar')
+      .on('mouseenter', showTip)
+      .on('mousemove', moveTip)
+      .on('mouseleave', hideTip)
+      .on('focus', showTip)
+      .on('blur', hideTip)
+      .on('keydown', (event) => { if (event.key === 'Escape') hideTip(); });
+  }
+
+  // Sync native scroller and custom scrollbar
+  let syncing = false;
+  function syncFromNative() {
+    if (syncing) return; syncing = true;
+    const ratio = (hscroll.scrollWidth - hscroll.clientWidth) / Math.max(1, scrollWrap.scrollWidth - scrollWrap.clientWidth);
+    hscroll.scrollLeft = scrollWrap.scrollLeft * ratio;
+    syncing = false;
+  }
+  function syncFromCustom() {
+    if (syncing) return; syncing = true;
+    const ratio = (scrollWrap.scrollWidth - scrollWrap.clientWidth) / Math.max(1, hscroll.scrollWidth - hscroll.clientWidth);
+    scrollWrap.scrollLeft = hscroll.scrollLeft * ratio;
+    syncing = false;
+  }
+  scrollWrap.addEventListener('scroll', syncFromNative, { passive: true });
+  hscroll.addEventListener('scroll', syncFromCustom, { passive: true });
+
+  // Sorting (already supports harvested)
+  let currentData = baseData.slice().sort((a,b) => a.country.localeCompare(b.country));
+  const sortSelect = document.getElementById('sortBy');
+  const resetBtn = document.getElementById('resetBtn');
+
+  sortSelect.addEventListener('change', () => {
+    const key = sortSelect.value;
+    if (key === 'country') {
+      currentData = baseData.slice().sort((a,b) => a.country.localeCompare(b.country));
+    } else {
+      currentData = baseData.slice().sort((a,b) => d3.descending(a[key], b[key]));
+    }
+    render(currentData); syncFromNative();
+  });
+
+  resetBtn.addEventListener('click', () => {
+    sortSelect.value = 'country';
+    currentData = baseData.slice().sort((a,b) => a.country.localeCompare(b.country));
+    render(currentData); syncFromNative();
+  });
+
+  function onResize() { render(currentData); syncFromNative(); }
+  window.addEventListener('resize', onResize);
+  new ResizeObserver(onResize).observe(document.querySelector('.card'));
+
+  render(currentData);
+  syncFromNative();
+  </script>
+</body>
+</html>
